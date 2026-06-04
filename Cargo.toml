@@ -1,0 +1,11 @@
+[package]
+name = "ternary-spreadsheet"
+version = "0.1.0"
+edition = "2021"
+description = "Core logic for the SuperInstance Spreadsheet — a familiar spreadsheet where every cell is a tiny ternary intelligence"
+license = "MIT"
+repository = "https://github.com/SuperInstance/ternary-spreadsheet"
+keywords = ["ternary", "spreadsheet", "evolution", "ai"]
+categories = ["data-structures", "algorithms"]
+
+[dependencies]
