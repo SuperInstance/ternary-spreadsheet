@@ -88,3 +88,11 @@ let heatmap = fitness_heatmap(engine.grid());
 ## License
 
 MIT
+
+## See Also
+- **ternary-cell** — related
+- **ternary-formula** — related
+- **ternary-grid** — related
+- **ternary-fitness** — related
+- **ternary-experiment** — related
+
