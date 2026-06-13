@@ -1,98 +1,91 @@
-# ternary-spreadsheet
+# Ternary Spreadsheet — Logic Engine with Three-Valued Cells
 
-Core logic for the **SuperInstance Spreadsheet** — a familiar spreadsheet interface where every cell is a tiny ternary intelligence.
+**Ternary Spreadsheet** is a spreadsheet engine where cells can hold ternary values {-1, 0, +1} in addition to numbers and text. It supports formula evaluation with ternary logic operators (AND, OR, NOT across cell ranges), enabling three-valued reasoning in a familiar grid interface.
 
-## The Concept
+## Why It Matters
 
-Imagine a spreadsheet where each cell doesn't just hold a number — it holds an opinion. Every cell is a ternary agent with a value of **−1** (avoid), **0** (unknown), or **+1** (choose). Each cell has:
+Spreadsheets are the most widely used programming paradigm in the world — everyone from accountants to scientists uses them. Adding ternary logic to spreadsheets brings three-valued reasoning to a tool people already know. This is particularly valuable for decision matrices: instead of binary yes/no evaluations, cells can represent "approved (1), needs review (0), rejected (-1)" — enabling nuanced decision workflows. Ternary AND across a range computes the minimum (most restrictive opinion), and ternary OR computes the maximum (most permissive opinion). For fleet management dashboards, this means a ternary spreadsheet can aggregate agent health signals into fleet-level assessments without custom code.
 
-- A **fitness score** — how well its value is performing
-- A **history** — the trail of values it's held
-- A **generation counter** — how many times it's evolved
+## How It Works
 
-The grid becomes a living population of ternary intelligences. You can evolve them, sort by fitness, mutate ranges, and watch natural selection shape the spreadsheet in real time.
+### Cell Types
 
-## Features
+Each cell holds one of:
+- `Tri(i8)`: Ternary value {-1, 0, +1}
+- `Number(f64)`: Floating-point value
+- `Text(String)`: String content
+- `Empty`: No value
 
-### 🧬 Cell
-A ternary cell with value `{−1, 0, +1}`, fitness score, and mutation history.
+### Ternary Logic Operations
 
-### 📊 Grid
-A 2D grid of cells with row/column operations, cell references (`A1`, `B3`), and range queries.
+**AND across cells**: Takes the minimum of all ternary values. In Kleene logic, AND is pessimistic: if any cell is -1, the result is -1; if any is 0, the result is 0 (unless one is -1); only all +1 yields +1.
 
-### ⚡ Formula Engine
-Evaluate spreadsheet formulas with AI-powered functions:
-
-| Formula | Description |
-|---------|-------------|
-| `=EVOLVE(A1:A10, 100)` | Run 100 generations of evolution on a range |
-| `=BEST(B:B)` | Find the highest fitness in column B |
-| `=SPECIES(C1:C50)` | Count distinct species (clusters of same-sign values) |
-| `=EXHAUSTIVE(D1:D4)` | Try all 3⁴=81 combinations, return best total fitness |
-| `=ENTROPY(E1:E20)` | Compute Shannon entropy of ternary values |
-| `=SUM(A1:A5)` | Sum cell values |
-| `=AVG(A1:A5)` | Average cell values |
-| `=COUNT(A1:A5)` | Count cells in range |
-
-### 🔄 Sort by Fitness
-Sort rows or columns by fitness — natural selection for your spreadsheet. Fittest rows rise to the top.
-
-### 🎲 Autofill with Mutation
-Like regular autofill, but with controlled randomness. Copy a cell's value across a range with a configurable mutation rate. Some cells flip, some go neutral — evolution in action.
-
-### 🎨 Conditional Format
-Assign colors based on fitness:
-- 🟢 **Green** — positive fitness (choose)
-- 🟡 **Yellow** — near zero (unknown)
-- 🔴 **Red** — negative fitness (avoid)
-
-### 🗺️ Fitness Heatmap
-Compute normalized heatmap values `[0.0, 1.0]` for the entire grid — visualize which regions are thriving.
-
-## Usage
-
-```rust
-use ternary_spreadsheet::*;
-
-// Create a 10x10 grid
-let mut grid = Grid::new(10, 10);
-
-// Set some values
-grid.set(0, 0, TernaryValue::Positive);
-grid.set(1, 0, TernaryValue::Negative);
-
-// Compute fitness for all cells
-grid.compute_all_fitness();
-
-// Use the formula engine
-let mut engine = FormulaEngine::new(grid);
-let best = engine.evaluate("=BEST(A:A)").unwrap();
-
-// Sort rows by fitness (fittest first)
-sort_by_fitness(engine.grid_mut(), SortAxis::Row);
-
-// Get conditional colors
-let color = conditional_format(engine.grid().get(0, 0).unwrap());
-
-// Generate heatmap
-let heatmap = fitness_heatmap(engine.grid());
+```
+ternary_and(cells) = min(all Tri values)
 ```
 
-## Design Principles
+**OR across cells**: Takes the maximum. Kleene OR is optimistic: if any cell is +1, the result is +1.
 
-- **Pure Rust** — no unsafe code, no external dependencies
-- **Zero-cost abstractions** — enum-based ternary values compile to efficient code
-- **Composable** — mix and match operations like building blocks
-- **Deterministic** — seeded mutations for reproducible experiments
+```
+ternary_or(cells) = max(all Tri values)
+```
+
+Both are O(c) for c cells in the range.
+
+### Formula Evaluation
+
+Formulas are stored as strings and evaluated by referencing other cells. The formula engine supports:
+- Cell references (e.g., `A1`, `B3`)
+- Ternary operators (AND, OR, NOT)
+- Arithmetic on Number cells
+- Range operations (e.g., `AND(A1:A10)`)
+
+### Spreadsheet Model
+
+The `Spreadsheet` type manages a `HashMap<(row, col), Cell>` with configurable dimensions. Cell access is O(1) average. Empty cells return `CellValue::Empty`.
+
+## Quick Start
+
+```rust
+use ternary_spreadsheet::{Spreadsheet, CellValue};
+
+let mut ss = Spreadsheet::new(10, 10);
+
+// Set ternary values
+ss.set(0, 0, CellValue::Tri(1));   // Approved
+ss.set(1, 0, CellValue::Tri(0));   // Needs review
+ss.set(2, 0, CellValue::Tri(-1));  // Rejected
+
+// Ternary AND across range
+let result = ss.ternary_and(&[(0, 0), (1, 0), (2, 0)]);
+assert_eq!(result, -1); // Most restrictive opinion
+
+// Set formula
+ss.set_formula(3, 0, "AND(A1:A3)".to_string());
+```
+
+```bash
+cargo add ternary-spreadsheet
+```
+
+## API
+
+| Type / Function | Description |
+|---|---|
+| `CellValue` | `Tri(i8)`, `Number(f64)`, `Text(String)`, `Empty` |
+| `Cell` | Value + optional formula |
+| `Spreadsheet` | `new(rows, cols)`, `get()`, `set()`, `set_formula()`, `ternary_and()` |
+
+## Architecture Notes
+
+The spreadsheet is the human interface to **SuperInstance** fleet state. Operators view agent decisions as ternary values in a grid: +1 (healthy), 0 (unknown), -1 (failed). The γ + η = C conservation is reflected in the aggregate: the ternary AND of all agents gives the fleet-level health assessment. See [Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+
+## References
+
+- Klir, George & Yuan, Bo. *Fuzzy Sets and Fuzzy Logic*, Prentice Hall, 1995 — three-valued logic.
+| Codd, E. F. "Extending the Database Relational Model to Capture More Meaning," *ACM TODS*, 4(4), 1979 — SQL NULL semantics.
+| Sipser, Michael. *Introduction to the Theory of Computation*, 3rd ed., Cengage, 2013.
 
 ## License
 
 MIT
-
-## See Also
-- **ternary-cell** — related
-- **ternary-formula** — related
-- **ternary-grid** — related
-- **ternary-fitness** — related
-- **ternary-experiment** — related
-
