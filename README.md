@@ -86,6 +86,19 @@ The spreadsheet is the human interface to **SuperInstance** fleet state. Operato
 | Codd, E. F. "Extending the Database Relational Model to Capture More Meaning," *ACM TODS*, 4(4), 1979 — SQL NULL semantics.
 | Sipser, Michael. *Introduction to the Theory of Computation*, 3rd ed., Cengage, 2013.
 
+
+
+## Complexity Summary
+
+| Operation | Time | Notes |
+|---|---|---|
+| Cell access get/set | O(1) average | HashMap lookup |
+| ternary_and(cells) | O(c) for c cells | Single pass minimum |
+| ternary_or(cells) | O(c) | Single pass maximum |
+| Formula evaluation | O(refs) | Depends on referenced cells |
+
+The spreadsheet model scales to thousands of cells with O(1) random access. Formula chains are evaluated lazily with dependency tracking.
+
 ## License
 
 MIT
