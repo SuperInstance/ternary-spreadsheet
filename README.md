@@ -1,103 +1,134 @@
-# Ternary Spreadsheet — Logic Engine with Three-Valued Cells
+# ternary-spreadsheet
 
-**Ternary Spreadsheet** is a spreadsheet engine where cells can hold ternary values {-1, 0, +1} in addition to numbers and text. It supports formula evaluation with ternary logic operators (AND, OR, NOT across cell ranges), enabling three-valued reasoning in a familiar grid interface.
+A **ternary logic spreadsheet engine** where every cell holds a value in {-1, 0, +1}. Supports formula evaluation (`SUM`, `AVG`, `ENTROPY`, `EVOLVE`, `BEST`, `SPECIES`, `EXHAUSTIVE`), conditional formatting via fitness coloring, mutation-based autofill, and fitness-sorted row/column operations.
 
 ## Why It Matters
 
-Spreadsheets are the most widely used programming paradigm in the world — everyone from accountants to scientists uses them. Adding ternary logic to spreadsheets brings three-valued reasoning to a tool people already know. This is particularly valuable for decision matrices: instead of binary yes/no evaluations, cells can represent "approved (1), needs review (0), rejected (-1)" — enabling nuanced decision workflows. Ternary AND across a range computes the minimum (most restrictive opinion), and ternary OR computes the maximum (most permissive opinion). For fleet management dashboards, this means a ternary spreadsheet can aggregate agent health signals into fleet-level assessments without custom code.
+Traditional spreadsheets operate on real-valued cells, which over-encodes for ternary decision problems. When modeling agent strategies, evolutionary fitness landscapes, or balance-sheet scenarios where outcomes are strictly positive/neutral/negative, a ternary spreadsheet:
+
+1. **Eliminates false precision** — no phantom decimals from floating-point artifacts
+2. **Enables combinatorial search** — exhaustive enumeration is 3^N, not ∞^N
+3. **Supports native evolution** — genetic operators work directly on {-1, 0, +1} values
+4. **Computes Shannon entropy** — information-theoretic analysis of cell distributions
 
 ## How It Works
 
-### Cell Types
+### Cell Model
 
-Each cell holds one of:
-- `Tri(i8)`: Ternary value {-1, 0, +1}
-- `Number(f64)`: Floating-point value
-- `Text(String)`: String content
-- `Empty`: No value
+Each `Cell` stores:
+- `value: TernaryValue` ∈ {Negative(-1), Neutral(0), Positive(+1)}
+- `fitness: f64` — computed from value and history diversity
+- `history: Vec<TernaryValue>` — previous values (mutation log)
+- `generation: u64` — mutation count
 
-### Ternary Logic Operations
-
-**AND across cells**: Takes the minimum of all ternary values. In Kleene logic, AND is pessimistic: if any cell is -1, the result is -1; if any is 0, the result is 0 (unless one is -1); only all +1 yields +1.
+**Default fitness:**
 
 ```
-ternary_and(cells) = min(all Tri values)
+f(cell) = value_i8 · (1 + unique_count(history) · 0.1)
 ```
 
-**OR across cells**: Takes the maximum. Kleene OR is optimistic: if any cell is +1, the result is +1.
+Cells that have changed values more often get a diversity bonus.
+
+### Grid Operations
+
+Standard grid operations with A1-style cell references (e.g., `B3` = row 2, col 1):
+
+- `get(row, col)`, `set(row, col, value)` — cell access
+- `range(r1, c1, r2, c2)` — rectangular slice
+- `col(c)`, `row(r)` — full column/row
+- `compute_all_fitness()` — batch fitness evaluation
+
+### Formula Engine
+
+| Formula | Description |
+|---------|-------------|
+| `=SUM(range)` | Σ cell values as f64 |
+| `=AVG(range)` | Mean cell value |
+| `=COUNT(range)` | Number of cells |
+| `=ENTROPY(range)` | Shannon entropy: `H = -Σ pᵢ log₂(pᵢ)` |
+| `=BEST(range)` | Maximum fitness in range |
+| `=SPECIES(range)` | Count contiguous same-sign clusters |
+| `=EVOLVE(range, gens)` | Run N generations of evolution on range |
+| `=EXHAUSTIVE(range)` | Try all 3^N combinations, return best total fitness |
+
+### Shannon Entropy
+
+For a range with *n* cells and counts (c₋₁, c₀, c₊₁):
 
 ```
-ternary_or(cells) = max(all Tri values)
+H = - Σ (cᵢ/n) · log₂(cᵢ/n)   for cᵢ > 0
 ```
 
-Both are O(c) for c cells in the range.
+Maximum: `H = log₂(3) ≈ 1.585` bits (uniform distribution).
 
-### Formula Evaluation
+**Complexity:** O(n) per entropy computation.
 
-Formulas are stored as strings and evaluated by referencing other cells. The formula engine supports:
-- Cell references (e.g., `A1`, `B3`)
-- Ternary operators (AND, OR, NOT)
-- Arithmetic on Number cells
-- Range operations (e.g., `AND(A1:A10)`)
+### Evolution Formula
 
-### Spreadsheet Model
+`=EVOLVE(A1:A10, 100)` runs 100 generations of genetic optimization on the range:
 
-The `Spreadsheet` type manages a `HashMap<(row, col), Cell>` with configurable dimensions. Cell access is O(1) average. Empty cells return `CellValue::Empty`.
+1. Compute fitness for all cells
+2. Sort by fitness (descending)
+3. Keep top 50%; replace bottom 50% with random ternary values
+4. Track best fitness across all generations
+
+**Complexity:** O(gens · n · log n).
+
+### Exhaustive Search
+
+`=EXHAUSTIVE(A1:A3)` tries all 3³ = 27 combinations:
+
+```
+for combo in 0..3^N:
+    for each cell: assign TernaryValue::from_seed(combo % 3)
+    compute total fitness
+return best total
+```
+
+**Complexity:** O(3^N · N). Limited to N ≤ 10 (59,049 combinations).
+
+### Sorting
+
+`sort_by_fitness(grid, axis)` sorts rows or columns by total fitness (descending). Fittest rows/columns appear first.
+
+**Complexity:** O(R log R · C) for row sort, O(C log C · R) for column sort.
 
 ## Quick Start
 
 ```rust
-use ternary_spreadsheet::{Spreadsheet, CellValue};
+use ternary_spreadsheet::{Grid, FormulaEngine, TernaryValue};
 
-let mut ss = Spreadsheet::new(10, 10);
+let mut grid = Grid::new(3, 1);
+grid.set(0, 0, TernaryValue::Positive);
+grid.set(1, 0, TernaryValue::Neutral);
+grid.set(2, 0, TernaryValue::Negative);
 
-// Set ternary values
-ss.set(0, 0, CellValue::Tri(1));   // Approved
-ss.set(1, 0, CellValue::Tri(0));   // Needs review
-ss.set(2, 0, CellValue::Tri(-1));  // Rejected
+let mut engine = FormulaEngine::new(grid);
 
-// Ternary AND across range
-let result = ss.ternary_and(&[(0, 0), (1, 0), (2, 0)]);
-assert_eq!(result, -1); // Most restrictive opinion
-
-// Set formula
-ss.set_formula(3, 0, "AND(A1:A3)".to_string());
-```
-
-```bash
-cargo add ternary-spreadsheet
+let sum = engine.evaluate("=SUM(A1:A3)").unwrap();    // 0.0
+let entropy = engine.evaluate("=ENTROPY(A1:A3)").unwrap(); // ≈1.585
 ```
 
 ## API
 
-| Type / Function | Description |
-|---|---|
-| `CellValue` | `Tri(i8)`, `Number(f64)`, `Text(String)`, `Empty` |
-| `Cell` | Value + optional formula |
-| `Spreadsheet` | `new(rows, cols)`, `get()`, `set()`, `set_formula()`, `ternary_and()` |
+| Type | Key Methods |
+|------|-------------|
+| `Grid` | `new(rows, cols)`, `get/set`, `range`, `col`, `compute_all_fitness()` |
+| `FormulaEngine` | `evaluate(formula_str)`, `grid()`, `grid_mut()` |
+| `Cell` | `set_value()`, `set_fitness()`, `compute_default_fitness()`, `reset()` |
+| `TernaryValue` | `Negative`, `Neutral`, `Positive` — `from_i8()`, `flip()`, `from_seed()` |
+| `sort_by_fitness(grid, axis)` | Sort rows/columns by total fitness |
 
 ## Architecture Notes
 
-The spreadsheet is the human interface to **SuperInstance** fleet state. Operators view agent decisions as ternary values in a grid: +1 (healthy), 0 (unknown), -1 (failed). The γ + η = C conservation is reflected in the aggregate: the ternary AND of all agents gives the fleet-level health assessment. See [Architecture](https://github.com/SuperInstance/SuperInstance/blob/main/ARCHITECTURE.md).
+The **γ + η = C** invariant is embodied in the EVOLVE formula: *generation* (γ) is the mutation operator producing new ternary values, *entropy* (η) is the Shannon entropy of the cell-value distribution (computed by ENTROPY), and *conservation* (C) is the invariant that the grid dimensions never change — evolution reshuffles values within a fixed-size space. The EXHAUSTIVE search is the conservation enforcement: it proves that no configuration exceeds the found maximum, closing the γ-η loop.
 
 ## References
 
-- Klir, George & Yuan, Bo. *Fuzzy Sets and Fuzzy Logic*, Prentice Hall, 1995 — three-valued logic.
-| Codd, E. F. "Extending the Database Relational Model to Capture More Meaning," *ACM TODS*, 4(4), 1979 — SQL NULL semantics.
-| Sipser, Michael. *Introduction to the Theory of Computation*, 3rd ed., Cengage, 2013.
-
-
-
-## Complexity Summary
-
-| Operation | Time | Notes |
-|---|---|---|
-| Cell access get/set | O(1) average | HashMap lookup |
-| ternary_and(cells) | O(c) for c cells | Single pass minimum |
-| ternary_or(cells) | O(c) | Single pass maximum |
-| Formula evaluation | O(refs) | Depends on referenced cells |
-
-The spreadsheet model scales to thousands of cells with O(1) random access. Formula chains are evaluated lazily with dependency tracking.
+- **Spreadsheets as programming environments:** Sestoft, P. *Spreadsheet Implementation Technology* (2014)
+- **Shannon entropy:** Shannon, C. E. "A Mathematical Theory of Communication" (1948)
+- **Genetic algorithms on discrete spaces:** Holland, J. *Adaptation in Natural and Artificial Systems* (1975)
+- **Exhaustive combinatorial search:** Knuth, D. *The Art of Computer Programming* Vol. 4A (2011)
 
 ## License
 
