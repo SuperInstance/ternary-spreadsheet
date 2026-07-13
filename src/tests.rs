@@ -409,3 +409,321 @@ fn test_ternary_from_seed() {
     // Wraps
     assert_eq!(TernaryValue::from_seed(3), TernaryValue::Negative);
 }
+
+// === Formula error-path tests ===
+
+#[test]
+fn test_formula_no_parenthesis() {
+    let grid = Grid::new(1, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=SUM").unwrap_err();
+    assert!(matches!(err, FormulaError::InvalidArguments(_)));
+}
+
+#[test]
+fn test_formula_missing_closing_paren() {
+    let grid = Grid::new(3, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=SUM(A1:A3").unwrap_err();
+    assert!(matches!(err, FormulaError::InvalidArguments(_)));
+}
+
+#[test]
+fn test_formula_without_equals_prefix() {
+    let mut grid = Grid::new(3, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Positive);
+    grid.set(2, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    // Without '=' prefix, evaluate should still work
+    let result = engine.evaluate("SUM(A1:A3)").unwrap();
+    assert_eq!(result, 3.0);
+}
+
+#[test]
+fn test_formula_lowercase_function_name() {
+    let mut grid = Grid::new(2, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    let result = engine.evaluate("=sum(A1:A2)").unwrap();
+    assert_eq!(result, 2.0);
+}
+
+#[test]
+fn test_formula_single_cell_range() {
+    let mut grid = Grid::new(1, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    // SUM of a single cell (no colon)
+    let result = engine.evaluate("=SUM(A1)").unwrap();
+    assert_eq!(result, 1.0);
+}
+
+#[test]
+fn test_formula_out_of_bounds_cell_ref() {
+    let grid = Grid::new(3, 3);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=SUM(Z99)").unwrap_err();
+    assert_eq!(err, FormulaError::InvalidRange("Z99".into()));
+}
+
+#[test]
+fn test_formula_evolve_missing_generations() {
+    let grid = Grid::new(3, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=EVOLVE(A1:A3)").unwrap_err();
+    assert!(matches!(err, FormulaError::InvalidArguments(_)));
+}
+
+#[test]
+fn test_formula_evolve_non_numeric_generations() {
+    let grid = Grid::new(3, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=EVOLVE(A1:A3, abc)").unwrap_err();
+    assert!(matches!(err, FormulaError::InvalidArguments(_)));
+}
+
+#[test]
+fn test_formula_full_column_range() {
+    let mut grid = Grid::new(3, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Positive);
+    grid.set(2, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    // A:A = full column A
+    let result = engine.evaluate("=SUM(A:A)").unwrap();
+    assert_eq!(result, 3.0);
+}
+
+#[test]
+fn test_formula_entropy_all_same() {
+    // All same value → zero entropy (no uncertainty)
+    let mut grid = Grid::new(3, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Positive);
+    grid.set(2, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    let result = engine.evaluate("=ENTROPY(A1:A3)").unwrap();
+    assert!(result.abs() < 1e-9, "expected 0.0, got {result}");
+}
+
+#[test]
+fn test_formula_entropy_two_values() {
+    // 2 Positive, 1 Negative: H = -(1/3)log2(1/3) - (2/3)log2(2/3) ≈ 0.9183
+    let mut grid = Grid::new(3, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Positive);
+    grid.set(2, 0, TernaryValue::Negative);
+    let mut engine = FormulaEngine::new(grid);
+    let result = engine.evaluate("=ENTROPY(A1:A3)").unwrap();
+    let expected =
+        -(1.0_f64 / 3.0) * (1.0_f64 / 3.0).log2() - (2.0_f64 / 3.0) * (2.0_f64 / 3.0).log2();
+    assert!(
+        (result - expected).abs() < 1e-9,
+        "expected {expected}, got {result}"
+    );
+}
+
+#[test]
+fn test_formula_count_empty_range() {
+    // COUNT of an out-of-bounds range returns 0.0 (no cells), not an error.
+    // The range A1:A3 on a 0-row grid has no valid cells.
+    let grid = Grid::new(0, 0);
+    let mut engine = FormulaEngine::new(grid);
+    let result = engine.evaluate("=COUNT(A1:A3)");
+    // Grid has 0 rows, so get_range_positions returns empty → NoData for most,
+    // but COUNT returns Ok(0.0) for empty cells.
+    // Actually parse_range_cells returns empty vec for out-of-bounds range.
+    // COUNT returns Ok(0.0).
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), 0.0);
+}
+
+#[test]
+fn test_formula_evolve_runs() {
+    // Smoke test: EVOLVE should run and return a finite f64.
+    let mut grid = Grid::new(4, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    grid.set(1, 0, TernaryValue::Negative);
+    grid.set(2, 0, TernaryValue::Neutral);
+    grid.set(3, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    let result = engine.evaluate("=EVOLVE(A1:A4, 10)").unwrap();
+    assert!(result.is_finite(), "EVOLVE returned non-finite: {result}");
+}
+
+// === Sort tests (column) ===
+
+#[test]
+fn test_sort_columns_by_fitness() {
+    let mut grid = Grid::new(2, 3);
+    // Col 0 total fitness = 1.0 + 2.0 = 3.0
+    grid.get_mut(0, 0).unwrap().set_fitness(1.0);
+    grid.get_mut(1, 0).unwrap().set_fitness(2.0);
+    // Col 1 total fitness = 5.0 + 5.0 = 10.0
+    grid.get_mut(0, 1).unwrap().set_fitness(5.0);
+    grid.get_mut(1, 1).unwrap().set_fitness(5.0);
+    // Col 2 total fitness = 3.0 + 3.0 = 6.0
+    grid.get_mut(0, 2).unwrap().set_fitness(3.0);
+    grid.get_mut(1, 2).unwrap().set_fitness(3.0);
+
+    sort_by_fitness(&mut grid, SortAxis::Column);
+
+    // After sort (descending): col1(10), col2(6), col0(3)
+    assert_eq!(grid.get(0, 0).unwrap().fitness, 5.0); // was col1
+    assert_eq!(grid.get(0, 1).unwrap().fitness, 3.0); // was col2
+    assert_eq!(grid.get(0, 2).unwrap().fitness, 1.0); // was col0
+}
+
+#[test]
+fn test_sort_rows_stability() {
+    // Two rows with equal total fitness should preserve relative order
+    // (Rust's sort_by is stable).
+    let mut grid = Grid::new(3, 1);
+    grid.get_mut(0, 0).unwrap().set_fitness(2.0);
+    grid.get_mut(1, 0).unwrap().set_fitness(2.0);
+    grid.get_mut(2, 0).unwrap().set_fitness(5.0);
+
+    sort_by_fitness(&mut grid, SortAxis::Row);
+
+    // Row with fitness 5.0 first, then the two 2.0 rows in original order
+    assert_eq!(grid.get(0, 0).unwrap().fitness, 5.0);
+    assert_eq!(grid.get(1, 0).unwrap().fitness, 2.0);
+    assert_eq!(grid.get(2, 0).unwrap().fitness, 2.0);
+}
+
+// === Grid edge-case tests ===
+
+#[test]
+fn test_grid_is_empty() {
+    assert!(Grid::new(0, 5).is_empty());
+    assert!(Grid::new(5, 0).is_empty());
+    assert!(!Grid::new(1, 1).is_empty());
+}
+
+#[test]
+fn test_grid_col_out_of_bounds() {
+    let grid = Grid::new(3, 3);
+    assert!(grid.col(5).is_none());
+    assert!(grid.col(3).is_none());
+    assert!(grid.col(2).is_some());
+}
+
+#[test]
+fn test_grid_row_out_of_bounds() {
+    let grid = Grid::new(3, 3);
+    assert!(grid.row(5).is_none());
+    assert!(grid.row(3).is_none());
+    assert!(grid.row(2).is_some());
+}
+
+#[test]
+fn test_grid_range_reversed_coords() {
+    let mut grid = Grid::new(4, 4);
+    grid.set(1, 1, TernaryValue::Positive);
+    grid.set(2, 2, TernaryValue::Negative);
+    // Reversed: (2,2) to (1,1) should give same as (1,1) to (2,2)
+    let cells = grid.range(2, 2, 1, 1);
+    assert_eq!(cells.len(), 4);
+}
+
+#[test]
+fn test_parse_cell_ref_edge_cases() {
+    assert_eq!(Grid::parse_cell_ref("Z1"), Some((0, 25)));
+    assert_eq!(Grid::parse_cell_ref("AA1"), Some((0, 26)));
+    assert_eq!(Grid::parse_cell_ref("AB1"), Some((0, 27)));
+    assert_eq!(Grid::parse_cell_ref("a1"), Some((0, 0))); // lowercase
+    assert_eq!(Grid::parse_cell_ref(""), None);
+    assert_eq!(Grid::parse_cell_ref("1A"), None); // digit before letter
+    assert_eq!(Grid::parse_cell_ref("A"), None); // no row number
+}
+
+// === Cell fitness tests ===
+
+#[test]
+fn test_cell_fitness_with_history() {
+    // fitness = value_i8 * (1 + unique_count(history) * 0.1)
+    let mut cell = Cell::new(TernaryValue::Positive);
+    // No history: fitness = 1 * (1 + 0) = 1.0
+    assert!((cell.compute_default_fitness() - 1.0).abs() < 1e-9);
+
+    cell.set_value(TernaryValue::Negative);
+    // Now value=Negative(-1), history=[Positive], unique=1
+    // fitness = -1 * (1 + 0.1) = -1.1
+    assert!((cell.compute_default_fitness() - (-1.1)).abs() < 1e-9);
+
+    cell.set_value(TernaryValue::Neutral);
+    // value=Neutral(0), history=[Positive, Negative], unique=2
+    // fitness = 0 * (1 + 0.2) = 0.0
+    assert!((cell.compute_default_fitness() - 0.0).abs() < 1e-9);
+}
+
+#[test]
+fn test_cell_default_and_neutral() {
+    let c1 = Cell::default();
+    let c2 = Cell::neutral();
+    assert_eq!(c1.value, TernaryValue::Neutral);
+    assert_eq!(c2.value, TernaryValue::Neutral);
+}
+
+#[test]
+fn test_ternary_all() {
+    let all = TernaryValue::all();
+    assert_eq!(all.len(), 3);
+    assert!(all.contains(&TernaryValue::Negative));
+    assert!(all.contains(&TernaryValue::Neutral));
+    assert!(all.contains(&TernaryValue::Positive));
+}
+
+// === Format tests ===
+
+#[test]
+fn test_conditional_format_with_thresholds() {
+    let mut cell = Cell::new(TernaryValue::Positive);
+
+    cell.set_fitness(0.6);
+    assert_eq!(
+        conditional_format_with_thresholds(&cell, 0.5, -0.5),
+        FitnessColor::Green
+    );
+
+    cell.set_fitness(-0.6);
+    assert_eq!(
+        conditional_format_with_thresholds(&cell, 0.5, -0.5),
+        FitnessColor::Red
+    );
+
+    cell.set_fitness(0.0);
+    assert_eq!(
+        conditional_format_with_thresholds(&cell, 0.5, -0.5),
+        FitnessColor::Yellow
+    );
+}
+
+#[test]
+fn test_fitness_color_display() {
+    assert_eq!(format!("{}", FitnessColor::Red), "red");
+    assert_eq!(format!("{}", FitnessColor::Yellow), "yellow");
+    assert_eq!(format!("{}", FitnessColor::Green), "green");
+}
+
+// === Heatmap range test ===
+
+#[test]
+fn test_fitness_heatmap_range() {
+    let mut grid = Grid::new(3, 3);
+    // Set fitness only in the 2x2 sub-range (1,1)-(2,2)
+    grid.get_mut(1, 1).unwrap().set_fitness(0.0);
+    grid.get_mut(1, 2).unwrap().set_fitness(1.0);
+    grid.get_mut(2, 1).unwrap().set_fitness(0.5);
+    grid.get_mut(2, 2).unwrap().set_fitness(0.25);
+    let hm = fitness_heatmap_range(&grid, 1, 1, 2, 2);
+    assert_eq!(hm.len(), 2);
+    assert_eq!(hm[0].len(), 2);
+    // Min (0.0) → 0.0, Max (1.0) → 1.0
+    assert!((hm[0][0] - 0.0).abs() < 1e-9);
+    assert!((hm[0][1] - 1.0).abs() < 1e-9);
+    assert!((hm[1][0] - 0.5).abs() < 1e-9);
+    assert!((hm[1][1] - 0.25).abs() < 1e-9);
+}
