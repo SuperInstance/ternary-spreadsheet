@@ -207,6 +207,51 @@ fn test_formula_species() {
     assert_eq!(result, 3.0);
 }
 
+#[test]
+fn test_formula_exhaustive_single_cell() {
+    // Single neutral cell, empty history.
+    // Each combo evaluated independently (history untouched):
+    //   Negative → -1.0, Neutral → 0.0, Positive → 1.0
+    // Best = 1.0
+    let grid = Grid::new(1, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let best = engine.evaluate("=EXHAUSTIVE(A1:A1)").unwrap();
+    assert!((best - 1.0).abs() < 1e-9, "expected 1.0, got {best}");
+}
+
+#[test]
+fn test_formula_exhaustive_two_cells() {
+    // Two neutral cells, empty history.
+    // Best combo: both Positive → 1.0 + 1.0 = 2.0
+    let grid = Grid::new(2, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let best = engine.evaluate("=EXHAUSTIVE(A1:A2)").unwrap();
+    assert!((best - 2.0).abs() < 1e-9, "expected 2.0, got {best}");
+}
+
+#[test]
+fn test_formula_exhaustive_restores_state() {
+    // EXHAUSTIVE must be side-effect-free: cell value, history, and
+    // generation must be restored after the search.
+    let mut grid = Grid::new(1, 1);
+    grid.set(0, 0, TernaryValue::Positive);
+    let mut engine = FormulaEngine::new(grid);
+    let cell_before = engine.grid().get(0, 0).unwrap().clone();
+    let _ = engine.evaluate("=EXHAUSTIVE(A1:A1)").unwrap();
+    let cell_after = engine.grid().get(0, 0).unwrap();
+    assert_eq!(cell_after.value, cell_before.value);
+    assert_eq!(cell_after.history, cell_before.history);
+    assert_eq!(cell_after.generation, cell_before.generation);
+}
+
+#[test]
+fn test_formula_exhaustive_too_many_cells() {
+    let grid = Grid::new(11, 1);
+    let mut engine = FormulaEngine::new(grid);
+    let err = engine.evaluate("=EXHAUSTIVE(A1:A11)").unwrap_err();
+    assert!(matches!(err, FormulaError::InvalidArguments(_)));
+}
+
 // === Sort tests ===
 
 #[test]

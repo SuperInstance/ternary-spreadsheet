@@ -245,15 +245,13 @@ impl FormulaEngine {
         let combos = 3usize.pow(n as u32);
         let mut best_total = f64::NEG_INFINITY;
 
-        // Save original values
-        let original: Vec<TernaryValue> = positions
+        // Save original cells (full state) so the search is side-effect-free.
+        // We set .value directly (not via set_value) during the search so that
+        // history/generation are not mutated — this ensures each combo's
+        // fitness is evaluated independently of evaluation order.
+        let original: Vec<Cell> = positions
             .iter()
-            .map(|&(r, c)| {
-                self.grid
-                    .get(r, c)
-                    .map(|c| c.value)
-                    .unwrap_or(TernaryValue::Neutral)
-            })
+            .map(|&(r, c)| self.grid.get(r, c).cloned().unwrap_or_default())
             .collect();
 
         for combo in 0..combos {
@@ -261,12 +259,12 @@ impl FormulaEngine {
             for &(r, c) in &positions {
                 let tv = TernaryValue::from_seed(val as u32);
                 if let Some(cell) = self.grid.get_mut(r, c) {
-                    cell.set_value(tv);
+                    cell.value = tv;
                 }
                 val /= 3;
             }
 
-            // Compute total fitness
+            // Compute total fitness (history unchanged → independent evaluation)
             let total: f64 = positions
                 .iter()
                 .filter_map(|&(r, c)| {
@@ -279,10 +277,10 @@ impl FormulaEngine {
             best_total = best_total.max(total);
         }
 
-        // Restore original values
+        // Restore original cells (full state: value, fitness, history, generation)
         for (i, &(r, c)) in positions.iter().enumerate() {
             if let Some(cell) = self.grid.get_mut(r, c) {
-                cell.set_value(original[i]);
+                *cell = original[i].clone();
             }
         }
 
