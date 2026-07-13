@@ -309,6 +309,23 @@ fn test_autofill_with_mutation() {
     assert!(mutated > 0, "Should have mutations");
 }
 
+#[test]
+fn test_autofill_out_of_bounds_not_counted() {
+    // Destination range extends beyond the grid. Out-of-bounds cells must
+    // not inflate the returned mutation count (they cannot be mutated).
+    let mut grid = Grid::new(3, 3);
+    grid.set(0, 0, TernaryValue::Positive);
+    let config = MutationConfig {
+        mutation_rate: 1.0, // Every in-bounds cell mutates
+        allow_flip: true,
+        seed: Some(42),
+    };
+    // Grid is 3x3 (rows 0..2, cols 0..2). Range (0,0)-(9,9) includes 100
+    // cells, but only 8 in-bounds non-source cells exist.
+    let mutated = autofill_mutate(&mut grid, 0, 0, 0, 0, 9, 9, &config);
+    assert_eq!(mutated, 8, "should only count in-bounds mutations");
+}
+
 // === Format tests ===
 
 #[test]
