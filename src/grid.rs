@@ -71,7 +71,8 @@ impl Grid {
     pub fn range(&self, r1: usize, c1: usize, r2: usize, c2: usize) -> Vec<&Cell> {
         let (r_min, r_max) = (r1.min(r2), r1.max(r2));
         let (c_min, c_max) = (c1.min(c2), c1.max(c2));
-        self.cells.iter()
+        self.cells
+            .iter()
             .enumerate()
             .filter(|(r, _)| *r >= r_min && *r <= r_max)
             .flat_map(|(_, row)| {
@@ -87,7 +88,8 @@ impl Grid {
     pub fn range_mut(&mut self, r1: usize, c1: usize, r2: usize, c2: usize) -> Vec<&mut Cell> {
         let (r_min, r_max) = (r1.min(r2), r1.max(r2));
         let (c_min, c_max) = (c1.min(c2), c1.max(c2));
-        self.cells.iter_mut()
+        self.cells
+            .iter_mut()
             .enumerate()
             .filter(move |(r, _)| *r >= r_min && *r <= r_max)
             .flat_map(move |(_, row)| {
@@ -146,11 +148,15 @@ impl Grid {
             }
             col = col * 26 + (ch.to_ascii_uppercase() as usize - 'A' as usize + 1);
         }
-        if col == 0 { return None; }
+        if col == 0 {
+            return None;
+        }
         col -= 1;
 
         let row: usize = row_str.parse().ok()?;
-        if row == 0 { return None; }
+        if row == 0 {
+            return None;
+        }
         Some((row - 1, col))
     }
 }

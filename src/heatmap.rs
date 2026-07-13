@@ -42,7 +42,13 @@ pub fn fitness_heatmap(grid: &Grid) -> Vec<Vec<f64>> {
 }
 
 /// Compute heatmap for a specific range.
-pub fn fitness_heatmap_range(grid: &Grid, r1: usize, c1: usize, r2: usize, c2: usize) -> Vec<Vec<f64>> {
+pub fn fitness_heatmap_range(
+    grid: &Grid,
+    r1: usize,
+    c1: usize,
+    r2: usize,
+    c2: usize,
+) -> Vec<Vec<f64>> {
     let (r_min, r_max) = (r1.min(r2), r1.max(r2));
     let (c_min, c_max) = (c1.min(c2), c1.max(c2));
 

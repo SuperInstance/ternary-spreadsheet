@@ -25,6 +25,7 @@ impl Default for MutationConfig {
 /// Autofill a range with mutation. Takes the source cell's value and propagates it
 /// across the target range, applying random mutations based on the config.
 /// Returns the number of cells mutated.
+#[allow(clippy::too_many_arguments)]
 pub fn autofill_mutate(
     grid: &mut Grid,
     src_row: usize,
@@ -35,7 +36,8 @@ pub fn autofill_mutate(
     dst_c2: usize,
     config: &MutationConfig,
 ) -> usize {
-    let source = grid.get(src_row, src_col)
+    let source = grid
+        .get(src_row, src_col)
         .map(|c| c.value)
         .unwrap_or(TernaryValue::Neutral);
 
