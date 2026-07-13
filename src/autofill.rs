@@ -25,6 +25,7 @@ impl Default for MutationConfig {
 /// Autofill a range with mutation. Takes the source cell's value and propagates it
 /// across the target range, applying random mutations based on the config.
 /// Returns the number of cells mutated.
+#[allow(clippy::too_many_arguments)]
 pub fn autofill_mutate(
     grid: &mut Grid,
     src_row: usize,
@@ -35,7 +36,8 @@ pub fn autofill_mutate(
     dst_c2: usize,
     config: &MutationConfig,
 ) -> usize {
-    let source = grid.get(src_row, src_col)
+    let source = grid
+        .get(src_row, src_col)
         .map(|c| c.value)
         .unwrap_or(TernaryValue::Neutral);
 
@@ -52,24 +54,27 @@ pub fn autofill_mutate(
                 continue;
             }
 
+            // Skip cells outside the grid — they cannot be mutated, so they
+            // must not inflate the returned count nor perturb the RNG stream.
+            let Some(cell) = grid.get_mut(r, c) else {
+                continue;
+            };
+
             counter = counter.wrapping_mul(6364136223846793005).wrapping_add(1);
             let rand_val = (counter >> 33) as f64 / (1u64 << 31) as f64;
 
-            let new_value = if rand_val < config.mutation_rate {
+            if rand_val < config.mutation_rate {
                 mutated += 1;
-                if config.allow_flip {
+                let new_value = if config.allow_flip {
                     counter = counter.wrapping_mul(6364136223846793005).wrapping_add(1);
                     let flip_val = (counter >> 33) as u32;
                     TernaryValue::from_seed(flip_val)
                 } else {
                     TernaryValue::Neutral
-                }
-            } else {
-                source
-            };
-
-            if let Some(cell) = grid.get_mut(r, c) {
+                };
                 cell.set_value(new_value);
+            } else {
+                cell.set_value(source);
             }
         }
     }

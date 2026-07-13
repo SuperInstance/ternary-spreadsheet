@@ -76,14 +76,21 @@ Maximum: `H = log₂(3) ≈ 1.585` bits (uniform distribution).
 
 ### Exhaustive Search
 
-`=EXHAUSTIVE(A1:A3)` tries all 3³ = 27 combinations:
+`EXHAUSTIVE(A1:A3)` tries all 3³ = 27 combinations:
 
 ```
 for combo in 0..3^N:
-    for each cell: assign TernaryValue::from_seed(combo % 3)
+    val = combo
+    for each cell:
+        assign TernaryValue::from_seed(val % 3)
+        val = val / 3
     compute total fitness
 return best total
 ```
+
+Each cell gets a different base-3 digit of `combo`, so every combination is
+distinct. The search is side-effect-free: cell state (value, history,
+generation) is saved before and restored after.
 
 **Complexity:** O(3^N · N). Limited to N ≤ 10 (59,049 combinations).
 

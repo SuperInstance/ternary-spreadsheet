@@ -32,7 +32,11 @@ impl TernaryValue {
 
     /// Get all three values.
     pub fn all() -> [TernaryValue; 3] {
-        [TernaryValue::Negative, TernaryValue::Neutral, TernaryValue::Positive]
+        [
+            TernaryValue::Negative,
+            TernaryValue::Neutral,
+            TernaryValue::Positive,
+        ]
     }
 
     /// Random value given a u32 seed (simple deterministic).

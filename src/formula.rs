@@ -51,16 +51,17 @@ impl FormulaEngine {
     pub fn evaluate(&mut self, formula: &str) -> FormulaResult {
         let formula = formula.trim();
         let formula = formula.strip_prefix('=').unwrap_or(formula);
-        
+
         // Parse function name and arguments
-        let paren_pos = formula.find('(').ok_or_else(|| {
-            FormulaError::InvalidArguments("expected function(args)".into())
-        })?;
+        let paren_pos = formula
+            .find('(')
+            .ok_or_else(|| FormulaError::InvalidArguments("expected function(args)".into()))?;
         let name = formula[..paren_pos].trim().to_uppercase();
         let inner = formula[paren_pos + 1..].trim();
-        let inner = inner.strip_suffix(')').ok_or_else(|| {
-            FormulaError::InvalidArguments("missing closing parenthesis".into())
-        })?.trim();
+        let inner = inner
+            .strip_suffix(')')
+            .ok_or_else(|| FormulaError::InvalidArguments("missing closing parenthesis".into()))?
+            .trim();
 
         match name.as_str() {
             "EVOLVE" => self.evolve(inner),
@@ -78,15 +79,16 @@ impl FormulaEngine {
     /// Parse a range like "A1:B5" or "A:A" into cell lists.
     fn parse_range_cells(&self, range_str: &str) -> Result<Vec<Cell>, FormulaError> {
         let range_str = range_str.trim();
-        
+
         if range_str.contains(':') {
             let parts: Vec<&str> = range_str.splitn(2, ':').collect();
             let start = parts[0].trim();
             let end = parts[1].trim();
 
             // Full column range like "A:A"
-            if start.chars().all(|c| c.is_ascii_alphabetic()) &&
-               end.chars().all(|c| c.is_ascii_alphabetic()) {
+            if start.chars().all(|c| c.is_ascii_alphabetic())
+                && end.chars().all(|c| c.is_ascii_alphabetic())
+            {
                 let col_start = Grid::parse_cell_ref(&format!("{}1", start));
                 let col_end = Grid::parse_cell_ref(&format!("{}{}", end, self.grid.rows()));
                 match (col_start, col_end) {
@@ -100,14 +102,19 @@ impl FormulaEngine {
                     .ok_or_else(|| FormulaError::InvalidRange(start.into()))?;
                 let end_pos = Grid::parse_cell_ref(end)
                     .ok_or_else(|| FormulaError::InvalidRange(end.into()))?;
-                Ok(self.grid.range(start_pos.0, start_pos.1, end_pos.0, end_pos.1)
-                    .into_iter().cloned().collect())
+                Ok(self
+                    .grid
+                    .range(start_pos.0, start_pos.1, end_pos.0, end_pos.1)
+                    .into_iter()
+                    .cloned()
+                    .collect())
             }
         } else {
             // Single cell
             let pos = Grid::parse_cell_ref(range_str)
                 .ok_or_else(|| FormulaError::InvalidRange(range_str.into()))?;
-            self.grid.get(pos.0, pos.1)
+            self.grid
+                .get(pos.0, pos.1)
                 .cloned()
                 .map(|c| vec![c])
                 .ok_or_else(|| FormulaError::InvalidRange(range_str.into()))
@@ -120,10 +127,14 @@ impl FormulaEngine {
     fn evolve(&mut self, args: &str) -> FormulaResult {
         let parts: Vec<&str> = args.splitn(2, ',').collect();
         if parts.len() != 2 {
-            return Err(FormulaError::InvalidArguments("EVOLVE(range, generations)".into()));
+            return Err(FormulaError::InvalidArguments(
+                "EVOLVE(range, generations)".into(),
+            ));
         }
         let range_str = parts[0].trim();
-        let generations: u32 = parts[1].trim().parse()
+        let generations: u32 = parts[1]
+            .trim()
+            .parse()
             .map_err(|_| FormulaError::InvalidArguments("generations must be a number".into()))?;
 
         // First get cell positions from range
@@ -143,17 +154,17 @@ impl FormulaEngine {
             }
 
             // Sort by fitness, keep top half, mutate bottom half
-            let mut with_fitness: Vec<(f64, usize, usize)> = positions.iter()
-                .filter_map(|&(r, c)| {
-                    self.grid.get(r, c).map(|cell| (cell.fitness, r, c))
-                })
+            let mut with_fitness: Vec<(f64, usize, usize)> = positions
+                .iter()
+                .filter_map(|&(r, c)| self.grid.get(r, c).map(|cell| (cell.fitness, r, c)))
                 .collect();
             with_fitness.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-            let cutoff = (with_fitness.len() + 1) / 2;
+            let cutoff = with_fitness.len().div_ceil(2);
             for (_, r, c) in with_fitness.into_iter().skip(cutoff) {
                 if let Some(cell) = self.grid.get_mut(r, c) {
-                    let new_val = TernaryValue::from_seed(gen * 17 + (r as u32) * 31 + (c as u32) * 7 + 13);
+                    let new_val =
+                        TernaryValue::from_seed(gen * 17 + (r as u32) * 31 + (c as u32) * 7 + 13);
                     cell.set_value(new_val);
                 }
             }
@@ -180,7 +191,8 @@ impl FormulaEngine {
         if cells.is_empty() {
             return Err(FormulaError::NoData);
         }
-        cells.iter()
+        cells
+            .iter()
             .map(|c| c.fitness)
             .fold(None, |acc: Option<f64>, f| {
                 Some(acc.map_or(f, |best| best.max(f)))
@@ -194,10 +206,10 @@ impl FormulaEngine {
         if cells.is_empty() {
             return Err(FormulaError::NoData);
         }
-        
+
         let mut species_count = 0usize;
         let mut prev_sign: Option<i8> = None;
-        
+
         for cell in &cells {
             let sign = cell.value.as_i8().signum();
             match prev_sign {
@@ -212,7 +224,7 @@ impl FormulaEngine {
                 prev_sign = Some(sign);
             }
         }
-        
+
         Ok(species_count as f64)
     }
 
@@ -225,7 +237,7 @@ impl FormulaEngine {
         }
         if positions.len() > 10 {
             return Err(FormulaError::InvalidArguments(
-                "EXHAUSTIVE limited to 10 cells (3^10 = 59049 combinations)".into()
+                "EXHAUSTIVE limited to 10 cells (3^10 = 59049 combinations)".into(),
             ));
         }
 
@@ -233,9 +245,13 @@ impl FormulaEngine {
         let combos = 3usize.pow(n as u32);
         let mut best_total = f64::NEG_INFINITY;
 
-        // Save original values
-        let original: Vec<TernaryValue> = positions.iter()
-            .map(|&(r, c)| self.grid.get(r, c).map(|c| c.value).unwrap_or(TernaryValue::Neutral))
+        // Save original cells (full state) so the search is side-effect-free.
+        // We set .value directly (not via set_value) during the search so that
+        // history/generation are not mutated — this ensures each combo's
+        // fitness is evaluated independently of evaluation order.
+        let original: Vec<Cell> = positions
+            .iter()
+            .map(|&(r, c)| self.grid.get(r, c).cloned().unwrap_or_default())
             .collect();
 
         for combo in 0..combos {
@@ -243,13 +259,14 @@ impl FormulaEngine {
             for &(r, c) in &positions {
                 let tv = TernaryValue::from_seed(val as u32);
                 if let Some(cell) = self.grid.get_mut(r, c) {
-                    cell.set_value(tv);
+                    cell.value = tv;
                 }
                 val /= 3;
             }
 
-            // Compute total fitness
-            let total: f64 = positions.iter()
+            // Compute total fitness (history unchanged → independent evaluation)
+            let total: f64 = positions
+                .iter()
                 .filter_map(|&(r, c)| {
                     let cell = self.grid.get_mut(r, c)?;
                     cell.set_fitness(cell.compute_default_fitness());
@@ -260,10 +277,10 @@ impl FormulaEngine {
             best_total = best_total.max(total);
         }
 
-        // Restore original values
+        // Restore original cells (full state: value, fitness, history, generation)
         for (i, &(r, c)) in positions.iter().enumerate() {
             if let Some(cell) = self.grid.get_mut(r, c) {
-                cell.set_value(original[i]);
+                *cell = original[i].clone();
             }
         }
 
@@ -327,14 +344,15 @@ impl FormulaEngine {
     /// Helper: get (row, col) positions from a range string.
     fn get_range_positions(&self, range_str: &str) -> Result<Vec<(usize, usize)>, FormulaError> {
         let range_str = range_str.trim();
-        
+
         if range_str.contains(':') {
             let parts: Vec<&str> = range_str.splitn(2, ':').collect();
             let start = parts[0].trim();
             let end = parts[1].trim();
 
-            if start.chars().all(|c| c.is_ascii_alphabetic()) &&
-               end.chars().all(|c| c.is_ascii_alphabetic()) {
+            if start.chars().all(|c| c.is_ascii_alphabetic())
+                && end.chars().all(|c| c.is_ascii_alphabetic())
+            {
                 let col_s = Grid::parse_cell_ref(&format!("{}1", start));
                 let col_e = Grid::parse_cell_ref(&format!("{}{}", end, self.grid.rows()));
                 match (col_s, col_e) {
